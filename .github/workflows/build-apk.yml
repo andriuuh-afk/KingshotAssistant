@@ -1,3 +1,4 @@
+
 name: Compilar Kingshot Assistant
 
 on:
@@ -30,15 +31,63 @@ jobs:
           gradle-version: '8.9'
 
       - name: Extraer proyecto
+        shell: bash
         run: |
+          set -e
           ZIP=$(find . -maxdepth 1 -name '*.zip' -print -quit)
           test -n "$ZIP"
           mkdir -p extracted
           unzip -q "$ZIP" -d extracted
-          find extracted -name settings.gradle.kts -print
-          PROJECT=$(dirname "$(find extracted -name settings.gradle.kts -print -quit)")
-          test -n "$PROJECT"
+
+          SETTINGS=$(find extracted -name settings.gradle.kts -print -quit)
+          test -n "$SETTINGS"
+
+          PROJECT=$(dirname "$SETTINGS")
+          test -f "$PROJECT/app/build.gradle.kts"
+
           echo "PROJECT_DIR=$PROJECT" >> "$GITHUB_ENV"
+          echo "Proyecto encontrado en: $PROJECT"
+
+      - name: Configurar compatibilidad Java 17
+        shell: bash
+        run: |
+          set -e
+          FILE="$PROJECT_DIR/app/build.gradle.kts"
+
+          python3 - "$FILE" <<'PY'
+          import sys
+          from pathlib import Path
+
+          p = Path(sys.argv[1])
+          s = p.read_text()
+
+          if "sourceCompatibility = JavaVersion.VERSION_17" not in s:
+              marker = "    defaultConfig {"
+
+              block = '''    compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+
+          '''
+
+              if marker not in s:
+                  raise SystemExit(
+                      "No se encontró defaultConfig en app/build.gradle.kts"
+                  )
+
+              s = s.replace(marker, block + marker, 1)
+              p.write_text(s)
+
+          print("Configuración Java 17 verificada.")
+          PY
+
+          echo "Configuración aplicada al archivo:"
+          cat "$FILE"
 
       - name: Compilar APK
         run: gradle -p "$PROJECT_DIR" assembleDebug
