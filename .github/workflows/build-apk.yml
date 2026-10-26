@@ -1,0 +1,51 @@
+name: Compilar Kingshot Assistant
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '*.zip'
+      - '.github/workflows/build-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Preparar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Extraer proyecto
+        run: |
+          ZIP=$(find . -maxdepth 1 -name '*.zip' -print -quit)
+          test -n "$ZIP"
+          mkdir -p extracted
+          unzip -q "$ZIP" -d extracted
+          find extracted -name settings.gradle.kts -print
+          PROJECT=$(dirname "$(find extracted -name settings.gradle.kts -print -quit)")
+          test -n "$PROJECT"
+          echo "PROJECT_DIR=$PROJECT" >> "$GITHUB_ENV"
+
+      - name: Compilar APK
+        run: gradle -p "$PROJECT_DIR" assembleDebug
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: KingshotAssistant-APK
+          path: '**/build/outputs/apk/debug/*.apk'
+          if-no-files-found: error
